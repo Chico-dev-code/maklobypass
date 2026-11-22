@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Daftar ID Bot</title>
+<style>
+:root{--bg:#eef1f4;--card:#fff;--ink:#14202b;--mute:#5d6b78;--line:#d5dce3;--acc:#1f6f8b;--accink:#fff;--bad:#b3261e;--ok:#1d7a46}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#0f171e;--card:#17222b;--ink:#e6edf2;--mute:#92a1ae;--line:#2a3945;--acc:#5fb3d1;--accink:#08202a;--bad:#ff8a80;--ok:#6fd49a}}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding:max(16px,env(safe-area-inset-top)) 16px max(24px,env(safe-area-inset-bottom))}
+main{max-width:560px;margin:0 auto}
+h1{font-size:1.4rem;margin:8px 0 4px}
+p.sub{margin:0 0 20px;color:var(--mute)}
+section{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:16px}
+label{display:block;font-weight:600;margin:0 0 6px}
+input{width:100%;font:inherit;color:inherit;background:transparent;border:1px solid var(--line);border-radius:8px;padding:11px 12px;margin-bottom:12px}
+input:focus-visible,button:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+button{font:inherit;font-weight:600;border:0;border-radius:8px;padding:11px 16px;background:var(--acc);color:var(--accink);cursor:pointer}
+button.ghost{background:transparent;color:var(--mute);border:1px solid var(--line);font-weight:500;padding:8px 12px}
+button.del{background:transparent;color:var(--bad);border:1px solid var(--line);padding:8px 12px;font-weight:500}
+button.del.sure{background:var(--bad);color:var(--card);border-color:var(--bad)}
+button:disabled{opacity:.6}
+.row{display:flex;gap:12px;align-items:center;justify-content:space-between;padding:12px 0;border-top:1px solid var(--line)}
+.row:first-child{border-top:0}
+.id{font:600 1.15rem ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.02em;overflow-wrap:anywhere}
+.meta{color:var(--mute);font-size:.88rem}
+.head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.head h2{font-size:1.05rem;margin:0}
+#msg{min-height:1.4em;margin:0 0 12px;font-size:.95rem}
+#msg.err{color:var(--bad)}#msg.ok{color:var(--ok)}
+.empty{color:var(--mute);margin:8px 0 0}
+[hidden]{display:none!important}
+@media (prefers-reduced-motion:no-preference){button{transition:background .15s}}
+</style>
+</head>
+<body>
+<main>
+  <h1>Daftar ID bot</h1>
+  <p class="sub">ID bot adalah angka sebelum tanda <b>:</b> pada token bot Telegram.</p>
+  <p id="msg" role="status" aria-live="polite"></p>
+
+  <section id="login">
+    <label for="key">Admin key</label>
+    <input id="key" type="password" autocomplete="current-password" placeholder="Masukkan ADMIN_KEY">
+    <button id="enter">Masuk</button>
+  </section>
+
+  <div id="app" hidden>
+    <section>
+      <label for="bid">ID bot</label>
+      <input id="bid" inputmode="numeric" autocomplete="off" placeholder="contoh: 123456789">
+      <label for="lbl">Label (opsional)</label>
+      <input id="lbl" autocomplete="off" placeholder="contoh: bot toko">
+      <button id="add">Tambah ID</button>
+    </section>
+    <section id="keybox" hidden>
+      <label for="kval">Access key untuk ID <span id="kid"></span></label>
+      <p class="meta" style="margin:0 0 8px">Simpan sekarang, key ini tidak ditampilkan lagi. Menambah ID yang sama membuat key baru dan mematikan key lama.</p>
+      <input id="kval" readonly>
+      <button id="kcopy">Salin access key</button>
+    </section>
+    <section>
+      <div class="head"><h2 id="count">Bot terdaftar</h2><span><button class="ghost" id="reload">Muat ulang</button> <button class="ghost" id="out">Keluar</button></span></div>
+      <div id="list"></div>
+    </section>
+  </div>
+</main>
+<script>
+const $ = s => document.querySelector(s);
+let key = "";
+try { key = sessionStorage.getItem("k") || ""; } catch (e) {}
+
+function say(text, kind) { const m = $("#msg"); m.textContent = text || ""; m.className = kind || ""; }
+
+async function api(method, query, body) {
+  const r = await fetch("/api/tokens" + (query || ""), {
+    method,
+    headers: { "x-admin-key": key, "content-type": "application/json" },
+    body: body ? JSON.stringify(body) : undefined
+  });
+  const d = await r.json().catch(() => ({}));
+  if (r.status === 401) { logout(); throw new Error("Admin key salah. Masukkan lagi."); }
+  if (!r.ok) throw new Error(d.error || "Gagal (" + r.status + ")");
+  return d;
+}
+
+function show(on) { $("#login").hidden = on; $("#app").hidden = !on; }
+function logout() { key = ""; $("#keybox").hidden = true; $("#kval").value = ""; try { sessionStorage.removeItem("k"); } catch (e) {} show(false); }
+
+function render(bots) {
+  $("#count").textContent = "Bot terdaftar (" + bots.length + ")";
+  const box = $("#list"); box.replaceChildren();
+  if (!bots.length) {
+    const p = document.createElement("p"); p.className = "empty";
+    p.textContent = "Belum ada bot. Isi ID di atas lalu pilih Tambah ID.";
+    box.append(p); return;
+  }
+  bots.sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0)).forEach(b => {
+    const row = document.createElement("div"); row.className = "row";
+    const info = document.createElement("div");
+    const id = document.createElement("div"); id.className = "id"; id.textContent = b.id;
+    const meta = document.createElement("div"); meta.className = "meta";
+    const date = b.addedAt ? new Date(b.addedAt).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" }) : "";
+    meta.textContent = [b.label, date].filter(Boolean).join(", ") || "Tanpa label";
+    info.append(id, meta);
+    const del = document.createElement("button"); del.className = "del"; del.textContent = "Hapus";
+    let t;
+    del.onclick = async () => {
+      if (!del.classList.contains("sure")) {
+        del.classList.add("sure"); del.textContent = "Yakin hapus?";
+        t = setTimeout(() => { del.classList.remove("sure"); del.textContent = "Hapus"; }, 3000);
+        return;
+      }
+      clearTimeout(t); del.disabled = true;
+      try { await api("DELETE", "?id=" + encodeURIComponent(b.id)); say("ID " + b.id + " dihapus.", "ok"); await load(); }
+      catch (e) { say(e.message, "err"); del.disabled = false; }
+    };
+    row.append(info, del); box.append(row);
+  });
+}
+
+async function load() {
+  try { const d = await api("GET"); show(true); render(d.bots || []); }
+  catch (e) { say(e.message, "err"); }
+}
+
+$("#enter").onclick = async () => {
+  key = $("#key").value.trim();
+  if (!key) return say("Admin key belum diisi.", "err");
+  try { sessionStorage.setItem("k", key); } catch (e) {}
+  say(""); await load();
+};
+$("#key").onkeydown = e => { if (e.key === "Enter") $("#enter").click(); };
+
+$("#add").onclick = async () => {
+  const id = $("#bid").value.trim();
+  if (!/^\d{5,15}$/.test(id)) return say("ID harus angka 5 sampai 15 digit, tanpa tanda : dan huruf.", "err");
+  $("#add").disabled = true;
+  try {
+    const d = await api("POST", "", { id, label: $("#lbl").value.trim() });
+    $("#bid").value = ""; $("#lbl").value = "";
+    $("#kid").textContent = id; $("#kval").value = d.accessKey; $("#keybox").hidden = false;
+    say("ID " + id + " ditambahkan. Salin access key-nya.", "ok"); await load();
+  } catch (e) { say(e.message, "err"); }
+  $("#add").disabled = false;
+};
+$("#kcopy").onclick = async () => {
+  const v = $("#kval");
+  try { await navigator.clipboard.writeText(v.value); say("Access key disalin.", "ok"); }
+  catch (e) { v.select(); say("Tekan lama pada key lalu pilih Salin.", "ok"); }
+};
+$("#bid").onkeydown = e => { if (e.key === "Enter") $("#add").click(); };
+$("#reload").onclick = () => { say(""); load(); };
+$("#out").onclick = () => { logout(); say("Sudah keluar.", "ok"); };
+
+if (key) load();
+</script>
+</body>
+</html>
