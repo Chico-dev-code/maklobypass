@@ -12,7 +12,7 @@ const cleanId = (v) => {
   return /^\d{5,15}$/.test(id) ? id : null;
 };
 
-export default async function handler(req, res) {
+async function main(req, res) {
   if (!isAdmin(req)) return res.status(401).json({ error: "unauthorized" });
 
   // LIST
@@ -45,4 +45,12 @@ export default async function handler(req, res) {
 
   res.setHeader("Allow", "GET, POST, DELETE");
   return res.status(405).end();
+}
+
+export default async function handler(req, res) {
+  try {
+    return await main(req, res);
+  } catch (e) {
+    return res.status(500).json({ error: String(e?.message || e).slice(0, 200) });
+  }
 }

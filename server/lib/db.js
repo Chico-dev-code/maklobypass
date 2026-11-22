@@ -1,7 +1,11 @@
 import { Redis } from "@upstash/redis";
 
-// Membaca UPSTASH_REDIS_REST_URL & UPSTASH_REDIS_REST_TOKEN
-export const redis = Redis.fromEnv();
+const e = process.env;
+// Mendukung nama variabel Upstash maupun Vercel KV
+export const redis = new Redis({
+  url: e.UPSTASH_REDIS_REST_URL || e.KV_REST_API_URL,
+  token: e.UPSTASH_REDIS_REST_TOKEN || e.KV_REST_API_TOKEN,
+});
 
-// Hash "bots": field = ID bot (angka sebelum ":"), value = { label, addedAt }
+// Hash "bots": field = ID bot, value = { label, addedAt, keyHash }
 export const BOTS = "bots";
